@@ -139,9 +139,10 @@ function makePeer(ws) {
       const peers = [...room.guests].map(([id]) => ({ id }));
       room.guests.set(ws.__nomaeId, ws);
       peerMeta.set(ws, { id: ws.__nomaeId, code, role: 'guest' });
+      const hostId = peerMeta.get(room.host)?.id;
       send(ws, {
         t: 'wel', id: ws.__nomaeId, code, seed: room.seed,
-        host: room.hostProfile, peers,
+        host: room.hostProfile, hostId, peers,
       });
       broadcast(room, { t: 'join', id: ws.__nomaeId, ...profile }, ws.__nomaeId);
       console.log(`[join] ${ws.__nomaeId} → ${code} (now ${room.guests.size} guests)`);
