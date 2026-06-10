@@ -1,0 +1,16 @@
+{
+  "name": "nomaerooms-relay",
+  "version": "1.0.0",
+  "description": "Tiny WebSocket relay for NomaeROOMS multiplayer. Host and guests both connect here, no P2P, no TURN, no NAT traversal needed.",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
