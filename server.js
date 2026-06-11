@@ -28,16 +28,83 @@ import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 
 const PORT = process.env.PORT || 10000;
+const OPENAI_KEY = process.env.OPENAI_KEY || '';
 const HEARTBEAT_MS = 30_000;
 const MAX_PEERS_PER_ROOM = 24;
 
-const http = createServer((req, res) => {
-  // Health check + friendly landing for humans hitting the URL in a browser.
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
+function cors(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
+
+const http = createServer(async (req, res) => {
+  cors(res);
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+
   if (req.url === '/healthz') {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ ok: true, rooms: rooms.size, peers: peerCount() }));
     return;
   }
+
+  // OpenAI Realtime session proxy — keeps the API key server-side
+  if (req.url === '/ai/realtime-session' && req.method === 'POST') {
+    if (!OPENAI_KEY) {
+      res.writeHead(503, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'AI not configured' }));
+      return;
+    }
+    try {
+      const body = await readBody(req);
+      const upstream = await fetch('https://api.openai.com/v1/realtime/sessions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
+        body,
+      });
+      const data = await upstream.text();
+      res.writeHead(upstream.status, { 'content-type': 'application/json' });
+      res.end(data);
+    } catch (e) {
+      res.writeHead(502, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'upstream failed' }));
+    }
+    return;
+  }
+
+  // OpenAI Chat Completions proxy (fallback TTS path)
+  if (req.url === '/ai/chat' && req.method === 'POST') {
+    if (!OPENAI_KEY) {
+      res.writeHead(503, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'AI not configured' }));
+      return;
+    }
+    try {
+      const body = await readBody(req);
+      const upstream = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
+        body,
+      });
+      const data = await upstream.text();
+      res.writeHead(upstream.status, { 'content-type': 'application/json' });
+      res.end(data);
+    } catch (e) {
+      res.writeHead(502, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'upstream failed' }));
+    }
+    return;
+  }
+
   res.writeHead(200, { 'content-type': 'text/plain' });
   res.end('nomaerooms relay. connect via WebSocket.\n');
 });

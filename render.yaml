@@ -9,3 +9,5 @@ services:
     envVars:
       - key: PORT
         value: "10000"
+      - key: OPENAI_KEY
+        sync: false
