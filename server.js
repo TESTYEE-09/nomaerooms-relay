@@ -123,7 +123,7 @@ function peerCount() {
 }
 
 function send(peer, msg) {
-  if (peer.readyState !== 1 /* OPEN */) return;
+  if (!peer || peer.readyState !== 1 /* OPEN */) return;
   try { peer.send(JSON.stringify(msg)); } catch { /* peer vanished */ }
 }
 
@@ -158,6 +158,7 @@ function leaveRoom(peer) {
     rooms.delete(meta.code);
   } else {
     room.guests.delete(meta.id);
+    room.profiles.delete(meta.id);
     broadcast(room, { t: 'leave', id: meta.id });
   }
   peerMeta.delete(peer);
@@ -184,7 +185,7 @@ function makePeer(ws) {
       const code = String(msg.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
       if (code.length !== 6) return send(ws, { t: 'err', msg: 'bad code' });
       if (rooms.has(code)) return send(ws, { t: 'err', msg: 'room taken' });
-      const room = { host: ws, guests: new Map(), seed: Number(msg.seed) || 0, hostProfile: msg.profile || null };
+      const room = { host: ws, guests: new Map(), profiles: new Map(), seed: Number(msg.seed) || 0, hostProfile: msg.profile || null };
       rooms.set(code, room);
       peerMeta.set(ws, { id: ws.__nomaeId, code, role: 'host' });
       send(ws, { t: 'wel', id: ws.__nomaeId, code });
@@ -203,8 +204,10 @@ function makePeer(ws) {
         name: String(msg.profile?.name || 'lost one').slice(0, 16),
         color: msg.profile?.color || '#7da2ff',
       };
-      const peers = [...room.guests].map(([id]) => ({ id }));
+      // include each existing guest's profile so joiners can label avatars
+      const peers = [...room.guests.keys()].map((id) => ({ id, ...(room.profiles.get(id) || {}) }));
       room.guests.set(ws.__nomaeId, ws);
+      room.profiles.set(ws.__nomaeId, profile);
       peerMeta.set(ws, { id: ws.__nomaeId, code, role: 'guest' });
       const hostId = peerMeta.get(room.host)?.id;
       send(ws, {
@@ -229,9 +232,10 @@ function makePeer(ws) {
         if (to === 'host') send(room.host, out);
         else send(room.guests.get(to), out);
       } else {
-        // to the opposite role (so guests broadcast to host, host broadcasts to guests)
-        if (meta.role === 'guest') send(room.host, out);
-        else for (const g of room.guests.values()) send(g, out);
+        // broadcast to everyone else in the room — guests must see each
+        // other's state too, not just the host's
+        if (meta.role !== 'host') send(room.host, out);
+        for (const [gid, g] of room.guests) if (gid !== meta.id) send(g, out);
       }
       return;
     }
