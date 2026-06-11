@@ -66,7 +66,7 @@ const http = createServer(async (req, res) => {
     }
     try {
       const body = await readBody(req);
-      const upstream = await fetch('https://api.openai.com/v1/realtime/sessions', {
+      const upstream = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
         body,
